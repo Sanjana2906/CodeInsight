@@ -48,109 +48,61 @@ def validate_repo_url(url):
     return owner, repo
 
 
+
 def discover_files(owner, repo, session):
-    root_url = f"https://github.com/{owner}/{repo}"
-    response = session.get(root_url, timeout=REQUEST_TIMEOUT)
+    """Discover repository files using GitHub's Git Trees API."""
+
+    api_url = f"https://api.github.com/repos/{owner}/{repo}"
+
+    # Get repository metadata and default branch
+    response = session.get(
+        api_url,
+        headers=HEADERS,
+        timeout=(10, 30)
+    )
     response.raise_for_status()
 
-    soup = BeautifulSoup(response.text, "html.parser")
+    repo_data = response.json()
+    branch = repo_data["default_branch"]
 
-        # Try several places because GitHub's HTML can vary.
-    branch_meta = soup.select_one(
-        'meta[name="octolytics-dimension-repository_default_branch"]'
+    # Get the complete repository tree recursively
+    tree_url = (
+        f"https://api.github.com/repos/{owner}/{repo}/git/trees/"
+        f"{quote(branch, safe='')}"
     )
-    branch = branch_meta.get("content") if branch_meta else None
 
-    if not branch:
-        branch_meta = soup.select_one(
-            'meta[name="github-repository-default-branch"]'
-        )
-        branch = branch_meta.get("content") if branch_meta else None
+    response = session.get(
+        tree_url,
+        headers=HEADERS,
+        params={"recursive": "1"},
+        timeout=(10, 45)
+    )
+    response.raise_for_status()
 
-    if not branch:
-        import re
-        match = re.search(
-            r'"defaultBranch"\s*:\s*"([^"]+)"',
-            response.text
-        )
-        if match:
-            branch = match.group(1)
+    tree_data = response.json()
 
-    if not branch:
-        raise RuntimeError(
-            "Could not detect the default branch. "
-            "Try again later or check the repository page."
-        )
+    if tree_data.get("truncated"):
+        print("Warning: GitHub truncated the repository tree.")
 
-    pending_dirs = deque([""])
-    visited_dirs = set()
-    files = set()
+    files = []
 
-    while pending_dirs and len(files) < MAX_FILES:
-        current_dir = pending_dirs.popleft()
-
-        if current_dir in visited_dirs:
+    for item in tree_data.get("tree", []):
+        if item.get("type") != "blob":
             continue
 
-        visited_dirs.add(current_dir)
+        path = item.get("path", "")
+        parts = path.lower().split("/")
 
-        if current_dir:
-            page_url = (
-                f"{root_url}/tree/{quote(branch, safe='')}/"
-                f"{quote(current_dir, safe='/')}"
-            )
-        else:
-            page_url = root_url
-
-        try:
-            response = session.get(page_url, timeout=REQUEST_TIMEOUT)
-
-            if response.status_code == 404:
-                continue
-
-            response.raise_for_status()
-        except requests.RequestException as error:
-            print(f"Could not scan {current_dir or '/'}: {error}")
+        if any(part in IGNORED_DIRS for part in parts):
             continue
 
-        soup = BeautifulSoup(response.text, "html.parser")
+        if any(path.lower().endswith(ext) for ext in EXTENSIONS):
+            files.append(path)
 
-        for link in soup.select("a[href]"):
-            href = unquote(link.get("href", ""))
-            prefix_tree = f"/{owner}/{repo}/tree/{branch}/"
-            prefix_blob = f"/{owner}/{repo}/blob/{branch}/"
+        if len(files) >= MAX_FILES:
+            break
 
-            if href.startswith(prefix_tree):
-                path = href[len(prefix_tree):].split("?")[0].strip("/")
-                if not path:
-                    continue
-
-                parts = path.split("/")
-                if any(part.lower() in IGNORED_DIRS for part in parts):
-                    continue
-
-                if path not in visited_dirs:
-                    pending_dirs.append(path)
-
-            elif href.startswith(prefix_blob):
-                path = href[len(prefix_blob):].split("?")[0].strip("/")
-                if not path:
-                    continue
-
-                parts = path.split("/")
-                if any(part.lower() in IGNORED_DIRS for part in parts):
-                    continue
-
-                if any(path.lower().endswith(ext) for ext in EXTENSIONS):
-                    files.add(path)
-
-                    if len(files) >= MAX_FILES:
-                        break
-
-        # Be polite to GitHub and avoid hammering directory pages.
-        time.sleep(0.2)
-
-    return branch, sorted(files)[:MAX_FILES]
+    return branch, sorted(files)
 
 
 def fetch_files(owner, repo, branch, paths, session):
