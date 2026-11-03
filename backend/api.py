@@ -19,7 +19,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://codeinsight.vercel.app",
+        "https://codeinsight-app.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
