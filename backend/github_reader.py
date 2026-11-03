@@ -6,7 +6,13 @@ from urllib.parse import urlparse, unquote, quote
 import requests
 from bs4 import BeautifulSoup
 
-HEADERS = {"User-Agent": "CodeInsight/0.1"}
+HEADERS = {
+    "User-Agent": "CodeInsight/0.1",
+    "Accept": "application/vnd.github+json",
+}
+
+if os.getenv("GITHUB_TOKEN"):
+    HEADERS["Authorization"] = f"Bearer {os.getenv('GITHUB_TOKEN')}"
 
 EXTENSIONS = {
     ".py", ".js", ".jsx", ".ts", ".tsx",
