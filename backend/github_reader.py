@@ -39,6 +39,7 @@ def validate_repo_url(url):
         raise ValueError(
             "Use a URL like https://github.com/owner/repo"
         )
+    #opens the URL and extracts the owner and repo name from the path
 
     parts = parsed.path.strip("/").split("/")
 

@@ -1,6 +1,6 @@
 # CodeInsight – AI-Powered GitHub Repository Exploration
 
-**Understand code. Not just read it.**
+
 
 CodeInsight is a web-based platform that helps developers and students explore unfamiliar GitHub repositories and understand their source code. It combines remote repository retrieval, interactive file browsing, keyword-based code search and AI-powered question answering using Google Gemini.
 
